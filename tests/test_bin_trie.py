@@ -1,3 +1,5 @@
+import pytest
+
 from hypothesis import (
     given,
     strategies as st,
@@ -9,6 +11,9 @@ from trie.trie import (
 )
 from trie.constants import (
     BLANK_HASH,
+)
+from trie.exceptions import (
+    LeafNodeOverrideError,
 )
 
 
@@ -36,3 +41,37 @@ def test_bin_trie_different_order_insert(k, v, random):
         for k, v in kv_pairs:
             trie.delete(k)
         assert trie.root_hash == BLANK_HASH
+
+
+@pytest.mark.parametrize(
+    'kv1,kv2,key_to_be_deleted,will_delete,will_rasie_error',
+    (
+        ((b'\x12\x34\x56\x78', b'78'), (b'\x12\x34\x56\x79', b'79'), b'\x12\x34\x56', True, False),
+        ((b'\x12\x34\x56\x78', b'78'), (b'\x12\x34\x56\xff', b'ff'), b'\x12\x34\x56', True, False),
+        ((b'\x12\x34\x56\x78', b'78'), (b'\x12\x34\x56\x79', b'79'), b'\x12\x34\x57', False, False),
+        ((b'\x12\x34\x56\x78', b'78'), (b'\x12\x34\x56\x79', b'79'), b'\x12\x34\x56\x78\x9a', False, True),
+    ),
+)
+def test_bin_trie_delete_subtrie(kv1, kv2, key_to_be_deleted, will_delete, will_rasie_error):
+    trie = BinaryTrie(db={})
+    # First test case, delete subtrie of a kv node
+    trie.set(kv1[0], kv1[1])
+    trie.set(kv2[0], kv2[1])
+    assert trie.get(kv1[0]) == kv1[1]
+    assert trie.get(kv2[0]) == kv2[1]
+
+    if will_delete:
+        trie.delete_subtrie(key_to_be_deleted)
+        assert trie.get(kv1[0]) == None
+        assert trie.get(kv2[0]) == None
+        assert trie.root_hash == BLANK_HASH
+    else:
+        if will_rasie_error:
+            with pytest.raises(LeafNodeOverrideError):
+                trie.delete_subtrie(key_to_be_deleted)
+        else:
+            root_hash_before_delete = trie.root_hash
+            trie.delete_subtrie(key_to_be_deleted)
+            assert trie.get(kv1[0]) == kv1[1]
+            assert trie.get(kv2[0]) == kv2[1]
+            assert trie.root_hash == root_hash_before_delete
